@@ -1,41 +1,54 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  worldmark-tracker
+Description: WorldMark Availability Tracker
 
-  Sample SAM Template for worldmark-tracker
-
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 10
+    Runtime: python3.14
 
 Resources:
-  HelloWorldFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+
+  ResortAvailabilityTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      CodeUri: hello_world/
-      Handler: app.lambda_handler
-      Runtime: python3.14
-      Architectures:
-        - x86_64
+      TableName: ResortAvailability
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resort_id
+          AttributeType: S
+        - AttributeName: date_room
+          AttributeType: S
+      KeySchema:
+        - AttributeName: resort_id
+          KeyType: HASH
+        - AttributeName: date_room
+          KeyType: RANGE
+
+  AvailabilityApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/api/availability
+      Handler: handler.lambda_handler
       Events:
-        HelloWorld:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+        GetAvailability:
+          Type: Api
           Properties:
-            Path: /hello
+            Path: /availability
             Method: get
 
-Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  HelloWorldApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  ScrapeQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: worldmark-scrape-queue
+  
+  ScraperWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/scraper/worker
+      Handler: handler.lambda_handler
+      Events:
+        ScrapeQueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ScrapeQueue.Arn
